@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title=" StockPulse ", page_icon="📊", layout="wide")
+st.set_page_config(page_title="StockPulse", page_icon="📊", layout="wide")
 
 import pandas as pd
 import requests
@@ -8,12 +8,10 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 import plotly.graph_objects as go
 import plotly.express as px
 from bs4 import BeautifulSoup
-import math
-import scipy.stats as stats
 import joblib
 from sklearn.linear_model import LogisticRegression
 
-# Try to import yfinance for live data; if not available, simulated data will be used.
+# Attempt to import yfinance for live data; if unavailable, simulated data will be used.
 try:
     import yfinance as yf
 except ImportError:
@@ -21,7 +19,7 @@ except ImportError:
     st.warning("yfinance not installed. Fundamental and Technical Analysis will use simulated data.")
 
 # ------------------------------
-# Future API Integration (Commented Out)
+# (Optional) Future API Integration
 # ------------------------------
 # For Twitter API integration using Tweepy, add your credentials here:
 # import tweepy
@@ -33,13 +31,11 @@ except ImportError:
 # auth.set_access_token(ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
 # api = tweepy.API(auth)
 #
-# For premium Yahoo Finance API integration, add your credentials here.
-#
-# To use a pre-trained logistic regression model instead of simulated training, you could load it like:
+# To use a pre-trained logistic regression model, load it with:
 # model = joblib.load("model.pkl")
 
 # ------------------------------
-# Download NLTK Data
+# Download and Initialize NLTK Data
 # ------------------------------
 nltk.download('vader_lexicon')
 nltk.download('stopwords')
@@ -51,12 +47,11 @@ sia = SentimentIntensityAnalyzer()
 stop_words = set(stopwords.words('english'))
 
 # ------------------------------
-# Custom CSS for a Modern, Advanced Look
+# Custom CSS for a Modern Look
 # ------------------------------
 st.markdown("""
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
-      
       body {
           background: linear-gradient(135deg, #e0f7fa, #e8f5e9);
           font-family: 'Roboto', sans-serif;
@@ -98,10 +93,6 @@ st.markdown("""
       .read-more-btn:hover {
           background-color: #1b5e20;
       }
-      .divider {
-          margin: 20px 0;
-          border-bottom: 1px solid #ccc;
-      }
       table {
           width: 100%;
           border-collapse: collapse;
@@ -119,21 +110,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# Landing Page (Professional Introduction)
+# Landing Page – Introduction
 # ------------------------------
 st.markdown("""
-    <div class="header"> StockPulse </div>
+    <div class="header">StockPulse</div>
     <div class="subheader">Advanced Sentiment Analysis & Live Market Insights</div>
     <div class="landing">
-      Welcome to the <strong> StockPulse </strong> – a cutting-edge tool designed for retail investors.
-      This application aggregates full-text news articles from 20 reputed Indian financial news websites and performs advanced sentiment analysis 
-      to gauge the bullish or bearish outlook of your chosen stock. 
+      Welcome to <strong>StockPulse</strong> – a cutting-edge tool for retail investors.
+      The app aggregates full-text news articles from 20 reputed Indian financial news websites and performs advanced sentiment analysis 
+      to gauge the bullish or bearish outlook of your chosen stock.
       <br><br>
     </div>
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# Internal Utility Functions (Hidden)
+# Internal Utility Functions
 # ------------------------------
 def _fetch_article_text(url):
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -142,8 +133,7 @@ def _fetch_article_text(url):
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             paragraphs = soup.find_all('p')
-            text = " ".join([p.get_text() for p in paragraphs])
-            return text.strip()
+            return " ".join(p.get_text() for p in paragraphs).strip()
     except Exception:
         return ""
     return ""
@@ -194,21 +184,10 @@ def _scrape_full_articles(stock, max_articles=10):
                                 page_soup = BeautifulSoup(page_resp.text, 'html.parser')
                                 time_tag = page_soup.find('time')
                                 if time_tag:
-                                    if time_tag.has_attr('datetime'):
-                                        article_date = time_tag['datetime']
-                                    else:
-                                        article_date = time_tag.get_text().strip()
+                                    article_date = time_tag.get('datetime', time_tag.get_text().strip())
                                 if article_date in ["N/A", ""]:
                                     meta_tag = page_soup.find("meta", {"property": "article:published_time"})
-                                    if meta_tag and meta_tag.has_attr("content"):
-                                        article_date = meta_tag["content"]
-                                if article_date in ["N/A", ""]:
-                                    meta_tag = page_soup.find("meta", {"name": "pubdate"})
-                                    if meta_tag and meta_tag.has_attr("content"):
-                                        article_date = meta_tag["content"]
-                                if article_date in ["N/A", ""]:
-                                    meta_tag = page_soup.find("meta", {"name": "date"})
-                                    if meta_tag and meta_tag.has_attr("content"):
+                                    if meta_tag and meta_tag.get("content"):
                                         article_date = meta_tag["content"]
                             else:
                                 article_date = "N/A"
@@ -231,8 +210,7 @@ def _scrape_full_articles(stock, max_articles=10):
 def _analyze_full_article_sentiment(df):
     pos_list, neg_list, compound_list, overall_sentiments = [], [], [], []
     for _, row in df.iterrows():
-        text = row["Article"]
-        scores = sia.polarity_scores(text)
+        scores = sia.polarity_scores(row["Article"])
         pos_list.append(scores["pos"])
         neg_list.append(scores["neg"])
         compound_list.append(round(scores["compound"], 3))
@@ -259,9 +237,8 @@ def _plot_overall_trend(articles_df):
                  color="Overall Sentiment", color_discrete_map={"Bullish": "green", "Bearish": "red"})
     st.plotly_chart(fig)
     st.markdown("""
-    **Overall Trend Indicator Explanation:**  
-    This indicator counts the number of articles classified as bullish versus bearish (ignoring neutral articles).  
-    A higher proportion of bullish articles suggests a positive market sentiment, whereas more bearish articles indicate a negative outlook.
+    **Overall Trend Explanation:**  
+    Counts of bullish versus bearish articles indicate the general market sentiment.
     """)
 
 def _plot_source_distribution(articles_df):
@@ -270,10 +247,6 @@ def _plot_source_distribution(articles_df):
         st.info("Not enough data for source distribution analysis.")
         return
     pivot = filtered_df.groupby(["Website", "Overall Sentiment"]).size().unstack(fill_value=0)
-    if "Bullish" not in pivot.columns:
-        pivot["Bullish"] = 0
-    if "Bearish" not in pivot.columns:
-        pivot["Bearish"] = 0
     pivot = pivot.reset_index()
     fig = px.bar(pivot, x="Website", y=["Bullish", "Bearish"],
                  title="Sentiment Distribution by Source",
@@ -305,14 +278,13 @@ def _plot_trend_strength(articles_df):
     st.plotly_chart(fig)
     st.markdown("""
     **Trend Strength Explanation:**  
-    The gauge shows the average compound score of all articles.  
-    Values closer to +1 indicate very bullish sentiment, while values near -1 indicate very bearish sentiment.
+    Values near +1 indicate very bullish sentiment; near -1 indicate bearish sentiment.
     """)
 
 def _load_sample_tweets(stock):
     data = [
          {"Date": "2023-08-01", "Username": "investor1", "Content": f"{stock} is looking strong today! Great buy opportunity."},
-         {"Date": "2023-08-02", "Username": "trader2", "Content": f"I am not sure about {stock}, seems a bit overvalued."},
+         {"Date": "2023-08-02", "Username": "trader2", "Content": f"I am not sure about {stock}, seems overvalued."},
          {"Date": "2023-08-03", "Username": "marketguru", "Content": f"{stock} is crashing, very bearish signal."},
          {"Date": "2023-08-04", "Username": "bullish_bear", "Content": f"Solid performance by {stock} despite market volatility."},
          {"Date": "2023-08-05", "Username": "trader123", "Content": f"{stock} appears to be recovering after a dip."},
@@ -320,8 +292,7 @@ def _load_sample_tweets(stock):
     return pd.DataFrame(data)
 
 def _analyze_tweet_sentiment(df):
-    sentiments = []
-    compounds = []
+    sentiments, compounds = [], []
     for content in df["Content"]:
         score = sia.polarity_scores(content)["compound"]
         compounds.append(score)
@@ -335,44 +306,46 @@ def _analyze_tweet_sentiment(df):
     df["Sentiment"] = sentiments
     return df
 
-# Modified Fundamental Data Function
+# ------------------------------
+# Fundamental Data – Live Metrics
+# ------------------------------
 def get_fundamental_data(stock):
     if yf is not None:
         try:
             ticker = yf.Ticker(stock)
             info = ticker.info
-            if not info or len(info)==0:
+            if not info or not isinstance(info, dict) or len(info) == 0:
                 raise ValueError("No fundamental data returned")
             fundamentals = {
-               "Stock": info.get("symbol", stock.upper()),
-               "P/E Ratio": info.get("trailingPE", "N/A"),
-               "EPS": info.get("trailingEps", "N/A"),
-               "Market Cap": info.get("marketCap", "N/A"),
-               "Dividend Yield (%)": info.get("dividendYield", "N/A"),
-               "ROE (%)": info.get("returnOnEquity", "N/A")
+                "Stock": info.get("symbol", stock.upper()),
+                "P/E Ratio": info.get("trailingPE", "N/A"),
+                "EPS": info.get("trailingEps", "N/A"),
+                "Market Cap": info.get("marketCap", "N/A"),
+                "Dividend Yield (%)": info.get("dividendYield", "N/A"),
+                "ROE (%)": info.get("returnOnEquity", "N/A")
             }
             return fundamentals
         except Exception as e:
             st.error(f"Error fetching fundamental data for {stock}: {e}")
     # Fallback simulated data
-    fundamentals = {
-       "Stock": stock.upper(),
-       "P/E Ratio": 15.3,
-       "EPS": 12.45,
-       "Market Cap": 12000000000,
-       "Dividend Yield (%)": 0.025,
-       "ROE (%)": 18.0
+    return {
+        "Stock": stock.upper(),
+        "P/E Ratio": 15.3,
+        "EPS": 12.45,
+        "Market Cap": 12000000000,
+        "Dividend Yield (%)": 0.025,
+        "ROE (%)": 18.0
     }
-    return fundamentals
 
-# Modified Technical Data Function
+# ------------------------------
+# Technical Data – Live Metrics
+# ------------------------------
 def get_technical_data(stock):
     if yf is not None:
         try:
-            # Using yf.download for more reliable data retrieval
             hist = yf.download(stock, period="6mo")
             if hist.empty or "Close" not in hist.columns:
-                raise ValueError("No historical data or 'Close' column missing")
+                raise ValueError("No historical data or missing 'Close' column")
             hist["MA50"] = hist["Close"].rolling(window=50).mean()
             hist["MA200"] = hist["Close"].rolling(window=200).mean()
             delta = hist["Close"].diff()
@@ -382,33 +355,32 @@ def get_technical_data(stock):
             ma_down = down.rolling(window=14).mean()
             rs = ma_up / ma_down
             hist["RSI"] = 100 - (100 / (1 + rs))
-            if hist.dropna().empty:
+            valid_hist = hist.dropna()
+            if valid_hist.empty:
                 raise ValueError("Not enough data after applying moving averages")
-            last = hist.dropna().iloc[-1]
-            technicals = {
-                 "Stock": stock.upper(),
-                 "Last Close": last["Close"],
-                 "50-Day MA": last["MA50"],
-                 "200-Day MA": last["MA200"],
-                 "RSI": last["RSI"],
-                 "Volume": last["Volume"]
+            last = valid_hist.iloc[-1]
+            return {
+                "Stock": stock.upper(),
+                "Last Close": last["Close"],
+                "50-Day MA": last["MA50"],
+                "200-Day MA": last["MA200"],
+                "RSI": last["RSI"],
+                "Volume": last["Volume"]
             }
-            return technicals
         except Exception as e:
             st.error(f"Error fetching technical data for {stock}: {e}")
     # Fallback simulated data
-    technicals = {
-         "Stock": stock.upper(),
-         "Last Close": 250.45,
-         "50-Day MA": 245.30,
-         "200-Day MA": 240.10,
-         "RSI": 55,
-         "Volume": "1.2M"
+    return {
+        "Stock": stock.upper(),
+        "Last Close": 250.45,
+        "50-Day MA": 245.30,
+        "200-Day MA": 240.10,
+        "RSI": 55,
+        "Volume": "1.2M"
     }
-    return technicals
 
 # ------------------------------
-# Main App Execution (Public UI)
+# Main App Execution
 # ------------------------------
 stock_name = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA) to analyze:", "")
 
@@ -440,11 +412,9 @@ if stock_name:
         col1, col2 = st.columns(2)
         with col1:
             avg_pos = articles_df["Positive (%)"].mean()
-            st.markdown("### Aggregated Sentiment Summary")
             st.metric("Average Positive", f"{avg_pos:.1f}%")
         with col2:
             avg_neg = articles_df["Negative (%)"].mean()
-            st.markdown("###")
             st.metric("Average Negative", f"{avg_neg:.1f}%")
         
         try:
@@ -480,6 +450,7 @@ if stock_name:
         except Exception as e:
             st.error(f"Error generating trend strength chart: {e}")
         
+        # Fundamental Analysis Section
         st.markdown("### Fundamental Analysis")
         try:
             fund_data = get_fundamental_data(stock_name)
@@ -487,28 +458,28 @@ if stock_name:
             col_f1, col_f2, col_f3 = st.columns(3)
             col_f1.metric("P/E Ratio", fund_data["P/E Ratio"])
             col_f2.metric("EPS", fund_data["EPS"])
-            col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}")
+            col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else fund_data["Market Cap"])
             col_f4, col_f5 = st.columns(2)
             col_f4.metric("Dividend Yield (%)", f"{(fund_data['Dividend Yield (%)']*100) if isinstance(fund_data['Dividend Yield (%)'], float) else fund_data['Dividend Yield (%)']}")
             col_f5.metric("ROE (%)", fund_data["ROE (%)"])
+            # Calculate Fundamental Value Score if data is valid
             try:
                 pe = float(fund_data["P/E Ratio"]) if fund_data["P/E Ratio"] not in ["N/A", 0] else None
                 roe = float(fund_data["ROE (%)"]) if fund_data["ROE (%)"] not in ["N/A", 0] else None
-                current_fvs = (roe / pe) * 100 if (pe and roe) else 0
-                current_fvs = round(current_fvs, 2)
+                fvs = (roe / pe) * 100 if (pe and roe) else 0
+                fvs = round(fvs, 2)
             except Exception:
-                current_fvs = "N/A"
+                fvs = "N/A"
             st.markdown("#### Fundamental Value Score")
-            st.metric("Fundamental Value Score", f"{current_fvs}")
+            st.metric("Fundamental Value Score", f"{fvs}")
             st.markdown("""
             **Explanation:**  
-            The Fundamental Value Score is calculated as (ROE / P/E Ratio) × 100.  
-            It measures how efficiently a company uses its equity to generate profits relative to its valuation.
-            A higher score suggests the company generates strong returns relative to its price, potentially indicating an undervalued stock.
+            Calculated as (ROE / P/E Ratio) × 100, this score reflects how efficiently a company uses its equity to generate profits relative to its valuation.
             """)
         except Exception as e:
             st.error(f"Error loading fundamental analysis: {e}")
         
+        # Technical Analysis Section
         st.markdown("### Technical Analysis")
         try:
             tech_data = get_technical_data(stock_name)
@@ -520,30 +491,29 @@ if stock_name:
             col_t4, col_t5 = st.columns(2)
             col_t4.metric("RSI", f"{tech_data['RSI']:.2f}")
             col_t5.metric("Volume", tech_data["Volume"])
+            # Calculate Technical Strength Score (Last Close / 50-Day MA) * 100
             try:
-                current_last_close = tech_data["Last Close"]
-                current_ma50 = tech_data["50-Day MA"]
-                current_tss = (current_last_close / current_ma50) * 100 if current_ma50 and current_ma50 != 0 else 0
-                current_tss = round(current_tss, 2)
+                tss = (tech_data["Last Close"] / tech_data["50-Day MA"]) * 100 if tech_data["50-Day MA"] and tech_data["50-Day MA"] != 0 else 0
+                tss = round(tss, 2)
             except Exception:
-                current_tss = "N/A"
+                tss = "N/A"
             st.markdown("#### Technical Strength Score")
-            st.metric("Technical Strength Score", f"{current_tss}")
+            st.metric("Technical Strength Score", f"{tss}")
             st.markdown("""
             **Explanation:**  
-            The Technical Strength Score is calculated as (Last Close / 50-Day MA) × 100.  
-            A score above 100 indicates that the stock is trading above its 50-day moving average (a bullish signal),  
-            while a score below 100 suggests a bearish trend.
+            Calculated as (Last Close / 50-Day MA) × 100, a score above 100 indicates bullish momentum.
             """)
             if yf:
-                ticker = yf.Ticker(stock_name)
                 hist = yf.download(stock_name, period="6mo")
-                fig_tech = go.Figure()
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA200"], mode="lines", name="200-Day MA"))
-                fig_tech.update_layout(title=f"{stock_name.upper()} Price & Moving Averages", xaxis_title="Date", yaxis_title="Price")
-                st.plotly_chart(fig_tech)
+                if not hist.empty:
+                    hist["MA50"] = hist["Close"].rolling(window=50).mean()
+                    hist["MA200"] = hist["Close"].rolling(window=200).mean()
+                    fig_tech = go.Figure()
+                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
+                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
+                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA200"], mode="lines", name="200-Day MA"))
+                    fig_tech.update_layout(title=f"{stock_name.upper()} Price & Moving Averages", xaxis_title="Date", yaxis_title="Price")
+                    st.plotly_chart(fig_tech)
             fig_rsi = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=tech_data["RSI"],
@@ -560,15 +530,12 @@ if stock_name:
             st.plotly_chart(fig_rsi)
             st.markdown("""
             **RSI Explanation:**  
-            RSI is calculated as:  
-            RSI = 100 - (100 / (1 + RS))  
-            where RS is the average gain divided by the average loss over a specified period (typically 14 days).  
-            An RSI above 70 suggests the stock might be overbought (potentially bearish),  
-            while an RSI below 30 suggests it might be oversold (potentially bullish).
+            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, below 30 oversold.
             """)
         except Exception as e:
             st.error(f"Error loading technical analysis: {e}")
         
+        # Twitter Analysis Section
         st.markdown("### Twitter Analysis")
         if st.button(f"Load Twitter Analysis for {stock_name.upper()}"):
             st.info("Loading sample Twitter data...")
@@ -591,10 +558,10 @@ if stock_name:
             except Exception as e:
                 st.error(f"Error in Twitter Analysis: {e}")
         
+        # Final Prediction Section (using simulated training data)
         st.markdown("### Final Prediction")
         try:
-            # To use a pre-trained model instead of training on simulated data, replace the following simulated training with:
-            # model = joblib.load("model.pkl")
+            # Simulated training data for demonstration
             train_data = pd.DataFrame({
                 'avg_compound': [0.25, -0.15, 0.20, -0.30, 0.10, -0.05, 0.30, -0.20],
                 'fundamental_score': [130, 70, 120, 60, 100, 85, 140, 65],
@@ -604,7 +571,6 @@ if stock_name:
             model = LogisticRegression()
             model.fit(train_data, train_labels)
             
-            # Current features from our analysis:
             current_avg_compound = articles_df["Compound"].mean()
             try:
                 pe = float(fund_data["P/E Ratio"]) if fund_data["P/E Ratio"] not in ["N/A", 0] else None
@@ -614,14 +580,11 @@ if stock_name:
             except Exception:
                 current_fvs = 0
             try:
-                current_last_close = tech_data["Last Close"]
-                current_ma50 = tech_data["50-Day MA"]
-                current_tss = (current_last_close / current_ma50) * 100 if current_ma50 and current_ma50 != 0 else 0
+                current_tss = (tech_data["Last Close"] / tech_data["50-Day MA"]) * 100 if tech_data["50-Day MA"] and tech_data["50-Day MA"] != 0 else 0
                 current_tss = round(current_tss, 2)
             except Exception:
                 current_tss = 0
             
-            # Create feature vector for the current stock
             X_current = [[current_avg_compound, current_fvs, current_tss]]
             final_prediction = model.predict(X_current)[0]
             prob = model.predict_proba(X_current)[0]
@@ -630,7 +593,6 @@ if stock_name:
             st.metric("Predicted Trend", final_prediction)
             st.markdown(f"**Model Confidence:** {confidence*100:.1f}%")
             
-            # Display Trend Intensity Gauge based on model confidence
             fig_intensity = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=confidence * 100,
@@ -646,16 +608,13 @@ if stock_name:
                 }
             ))
             st.plotly_chart(fig_intensity)
-            
             st.markdown("""
             **Final Prediction Explanation:**  
-            Our logistic regression model integrates three key factors:
-            - **News Sentiment (Average Compound Score):** Reflects the overall tone of recent news articles.
-            - **Fundamental Value Score:** Calculated as (ROE / P/E Ratio) × 100, it indicates the company's profitability relative to its valuation.
-            - **Technical Strength Score:** Calculated as (Last Close / 50-Day MA) × 100, it shows how the current price compares to recent trends.
-            
-            A final prediction of **Bullish** suggests that these combined factors point to a positive outlook for the stock (i.e., price may increase), 
-            whereas a **Bearish** prediction indicates potential downward pressure. The Trend Intensity gauge displays the model's confidence in its prediction.
+            The logistic regression model uses:
+            - News Sentiment (Average Compound Score)
+            - Fundamental Value Score (ROE / P/E Ratio × 100)
+            - Technical Strength Score (Last Close / 50-Day MA × 100)
+            to predict the stock's trend.
             """)
         except Exception as e:
             st.error(f"Error generating final prediction: {e}")
@@ -663,6 +622,7 @@ if stock_name:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
 
 
