@@ -335,60 +335,74 @@ def _analyze_tweet_sentiment(df):
     df["Sentiment"] = sentiments
     return df
 
+# Modified Fundamental Data Function
 def get_fundamental_data(stock):
-    if yf:
-        ticker = yf.Ticker(stock)
-        info = ticker.info
-        fundamentals = {
-           "Stock": info.get("symbol", "N/A"),
-           "P/E Ratio": info.get("trailingPE", "N/A"),
-           "EPS": info.get("trailingEps", "N/A"),
-           "Market Cap": info.get("marketCap", "N/A"),
-           "Dividend Yield (%)": info.get("dividendYield", "N/A"),
-           "ROE (%)": info.get("returnOnEquity", "N/A")
-        }
-    else:
-        fundamentals = {
-           "Stock": stock.upper(),
-           "P/E Ratio": 15.3,
-           "EPS": 12.45,
-           "Market Cap": 12000000000,
-           "Dividend Yield (%)": 0.025,
-           "ROE (%)": 18.0
-        }
+    if yf is not None:
+        try:
+            ticker = yf.Ticker(stock)
+            info = ticker.info
+            if not info or 'regularMarketPrice' not in info:
+                raise ValueError("Incomplete fundamental data")
+            fundamentals = {
+               "Stock": info.get("symbol", "N/A"),
+               "P/E Ratio": info.get("trailingPE", "N/A"),
+               "EPS": info.get("trailingEps", "N/A"),
+               "Market Cap": info.get("marketCap", "N/A"),
+               "Dividend Yield (%)": info.get("dividendYield", "N/A"),
+               "ROE (%)": info.get("returnOnEquity", "N/A")
+            }
+            return fundamentals
+        except Exception as e:
+            st.error(f"Error fetching fundamental data for {stock}: {e}")
+    # Fallback simulated data
+    fundamentals = {
+       "Stock": stock.upper(),
+       "P/E Ratio": 15.3,
+       "EPS": 12.45,
+       "Market Cap": 12000000000,
+       "Dividend Yield (%)": 0.025,
+       "ROE (%)": 18.0
+    }
     return fundamentals
 
+# Modified Technical Data Function
 def get_technical_data(stock):
-    if yf:
-        ticker = yf.Ticker(stock)
-        hist = ticker.history(period="6mo")
-        hist["MA50"] = hist["Close"].rolling(window=50).mean()
-        hist["MA200"] = hist["Close"].rolling(window=200).mean()
-        delta = hist["Close"].diff()
-        up = delta.clip(lower=0)
-        down = -1 * delta.clip(upper=0)
-        ma_up = up.rolling(window=14).mean()
-        ma_down = down.rolling(window=14).mean()
-        rs = ma_up / ma_down
-        hist["RSI"] = 100 - (100 / (1 + rs))
-        last = hist.iloc[-1]
-        technicals = {
-             "Stock": stock.upper(),
-             "Last Close": last["Close"],
-             "50-Day MA": last["MA50"],
-             "200-Day MA": last["MA200"],
-             "RSI": last["RSI"],
-             "Volume": last["Volume"]
-        }
-    else:
-        technicals = {
-             "Stock": stock.upper(),
-             "Last Close": 250.45,
-             "50-Day MA": 245.30,
-             "200-Day MA": 240.10,
-             "RSI": 55,
-             "Volume": "1.2M"
-        }
+    if yf is not None:
+        try:
+            # Using yf.download for more reliable data retrieval
+            hist = yf.download(stock, period="6mo")
+            if hist.empty:
+                raise ValueError("No historical data retrieved")
+            hist["MA50"] = hist["Close"].rolling(window=50).mean()
+            hist["MA200"] = hist["Close"].rolling(window=200).mean()
+            delta = hist["Close"].diff()
+            up = delta.clip(lower=0)
+            down = -1 * delta.clip(upper=0)
+            ma_up = up.rolling(window=14).mean()
+            ma_down = down.rolling(window=14).mean()
+            rs = ma_up / ma_down
+            hist["RSI"] = 100 - (100 / (1 + rs))
+            last = hist.iloc[-1]
+            technicals = {
+                 "Stock": stock.upper(),
+                 "Last Close": last["Close"],
+                 "50-Day MA": last["MA50"],
+                 "200-Day MA": last["MA200"],
+                 "RSI": last["RSI"],
+                 "Volume": last["Volume"]
+            }
+            return technicals
+        except Exception as e:
+            st.error(f"Error fetching technical data for {stock}: {e}")
+    # Fallback simulated data
+    technicals = {
+         "Stock": stock.upper(),
+         "Last Close": 250.45,
+         "50-Day MA": 245.30,
+         "200-Day MA": 240.10,
+         "RSI": 55,
+         "Volume": "1.2M"
+    }
     return technicals
 
 # ------------------------------
@@ -521,7 +535,7 @@ if stock_name:
             """)
             if yf:
                 ticker = yf.Ticker(stock_name)
-                hist = ticker.history(period="6mo")
+                hist = yf.download(stock_name, period="6mo")
                 fig_tech = go.Figure()
                 fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
                 fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
@@ -647,4 +661,5 @@ if stock_name:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
