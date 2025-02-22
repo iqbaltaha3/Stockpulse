@@ -10,8 +10,9 @@ import plotly.express as px
 from bs4 import BeautifulSoup
 import joblib
 from sklearn.linear_model import LogisticRegression
+import numpy as np
 
-# Try to import yfinance for live data; if unavailable, info will be missing.
+# Try to import yfinance for live data; if unavailable, live data will be incomplete.
 try:
     import yfinance as yf
 except ImportError:
@@ -23,7 +24,7 @@ except ImportError:
 # ------------------------------
 # For Twitter API integration using Tweepy, add your credentials here:
 # ...
-# To use a pre-trained logistic regression model, load it with:
+# To use a pre-trained model, load it with:
 # model = joblib.load("model.pkl")
 
 # ------------------------------
@@ -116,7 +117,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# Internal Utility Functions
+# Internal Utility Functions (News Scraping & Sentiment)
 # ------------------------------
 def _fetch_article_text(url):
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -288,7 +289,7 @@ def _analyze_tweet_sentiment(df):
     return df
 
 # ------------------------------
-# Fundamental Data – Live Metrics
+# Fundamental Analysis – Live Data & Metrics
 # ------------------------------
 def get_fundamental_data(stock):
     fundamentals = {}
@@ -300,6 +301,7 @@ def get_fundamental_data(stock):
             info = {}
     else:
         info = {}
+    # Use live data; if a value is missing, show "N/A"
     fundamentals["Stock"] = info.get("symbol", stock.upper())
     fundamentals["P/E Ratio"] = info.get("trailingPE", "N/A")
     fundamentals["EPS"] = info.get("trailingEps", "N/A")
@@ -309,7 +311,7 @@ def get_fundamental_data(stock):
     return fundamentals
 
 # ------------------------------
-# Technical Data – Live Metrics
+# Technical Analysis – Live Data & Metrics
 # ------------------------------
 def get_technical_data(stock):
     tech_data = {}
@@ -335,28 +337,14 @@ def get_technical_data(stock):
             last = valid_hist.iloc[-1]
             tech_data["Stock"] = stock.upper()
             tech_data["Last Close"] = last["Close"]
-            tech_data["50-Day MA"] = last["MA50"] if not pd.isna(last["MA50"]) else "N/A"
-            tech_data["200-Day MA"] = last["MA200"] if not pd.isna(last["MA200"]) else "N/A"
-            tech_data["RSI"] = last["RSI"] if not pd.isna(last["RSI"]) else "N/A"
-            tech_data["Volume"] = last["Volume"] if "Volume" in last and not pd.isna(last["Volume"]) else "N/A"
+            tech_data["50-Day MA"] = last["MA50"]
+            tech_data["200-Day MA"] = last["MA200"]
+            tech_data["RSI"] = last["RSI"]
+            tech_data["Volume"] = last["Volume"]
         else:
-            tech_data = {
-                "Stock": stock.upper(),
-                "Last Close": "N/A",
-                "50-Day MA": "N/A",
-                "200-Day MA": "N/A",
-                "RSI": "N/A",
-                "Volume": "N/A"
-            }
+            tech_data = {key: "N/A" for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
     else:
-        tech_data = {
-            "Stock": stock.upper(),
-            "Last Close": "N/A",
-            "50-Day MA": "N/A",
-            "200-Day MA": "N/A",
-            "RSI": "N/A",
-            "Volume": "N/A"
-        }
+        tech_data = {key: "N/A" for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
     return tech_data
 
 # ------------------------------
@@ -430,69 +418,69 @@ if stock_name:
         except Exception as e:
             st.error(f"Error generating trend strength chart: {e}")
         
+        # Revamped Fundamental Analysis Section
         st.markdown("### Fundamental Analysis")
+        fund_data = get_fundamental_data(stock_name)
+        st.markdown("#### Key Fundamental Metrics")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1.metric("P/E Ratio", fund_data["P/E Ratio"])
+        col_f2.metric("EPS", fund_data["EPS"])
+        col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else fund_data["Market Cap"])
+        col_f4, col_f5 = st.columns(2)
+        dyield = fund_data["Dividend Yield (%)"]
+        if isinstance(dyield, (int, float)):
+            dyield = f"{dyield*100:.2f}%"
+        col_f4.metric("Dividend Yield", dyield)
+        col_f5.metric("ROE (%)", fund_data["ROE (%)"])
+        # Calculate Fundamental Score = (ROE / P/E Ratio) * 100 (using 0 if unavailable)
         try:
-            fund_data = get_fundamental_data(stock_name)
-            st.markdown("#### Key Fundamental Metrics")
-            col_f1, col_f2, col_f3 = st.columns(3)
-            col_f1.metric("P/E Ratio", fund_data["P/E Ratio"])
-            col_f2.metric("EPS", fund_data["EPS"])
-            col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else fund_data["Market Cap"])
-            col_f4, col_f5 = st.columns(2)
-            col_f4.metric("Dividend Yield (%)", f"{(fund_data['Dividend Yield (%)']*100) if isinstance(fund_data['Dividend Yield (%)'], (int, float)) else fund_data['Dividend Yield (%)']}")
-            col_f5.metric("ROE (%)", fund_data["ROE (%)"])
-            # Calculate Fundamental Value Score using available live data; if a metric is "N/A", use 0 for calculation.
-            try:
-                pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
-                roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
-                fvs = (roe / pe) * 100 if pe != 0 else 0
-                fvs = round(fvs, 2)
-            except Exception:
-                fvs = 0
-            st.markdown("#### Fundamental Value Score")
-            st.metric("Fundamental Value Score", f"{fvs}")
-            st.markdown("""
-            **Explanation:**  
-            Calculated as (ROE / P/E Ratio) × 100, this score reflects a company’s efficiency in generating profits relative to its valuation.
-            """)
-        except Exception as e:
-            st.error(f"Error loading fundamental analysis: {e}")
+            pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
+            roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
+            fundamental_score = (roe / pe) * 100 if pe != 0 else 0
+        except Exception:
+            fundamental_score = 0
+        st.markdown("#### Fundamental Value Score")
+        st.metric("Fundamental Score", f"{fundamental_score:.2f}")
+        st.markdown("""
+        **Fundamental Score Explanation:**  
+        This score is calculated as (ROE / P/E Ratio) × 100. A higher score suggests a company may be undervalued relative to its profitability.
+        """)
         
+        # Revamped Technical Analysis Section
         st.markdown("### Technical Analysis")
+        tech_data = get_technical_data(stock_name)
+        st.markdown("#### Key Technical Indicators")
+        col_t1, col_t2, col_t3 = st.columns(3)
+        col_t1.metric("Last Close", f"{tech_data['Last Close']:.2f}" if isinstance(tech_data["Last Close"], (int, float)) else tech_data["Last Close"])
+        col_t2.metric("50-Day MA", f"{tech_data['50-Day MA']:.2f}" if isinstance(tech_data["50-Day MA"], (int, float)) else tech_data["50-Day MA"])
+        col_t3.metric("200-Day MA", f"{tech_data['200-Day MA']:.2f}" if isinstance(tech_data["200-Day MA"], (int, float)) else tech_data["200-Day MA"])
+        col_t4, col_t5 = st.columns(2)
+        col_t4.metric("RSI", f"{tech_data['RSI']:.2f}" if isinstance(tech_data["RSI"], (int, float)) else tech_data["RSI"])
+        col_t5.metric("Volume", tech_data["Volume"])
+        # Calculate Technical Strength Score = (Last Close / 50-Day MA) * 100
         try:
-            tech_data = get_technical_data(stock_name)
-            st.markdown("#### Key Technical Indicators")
-            col_t1, col_t2, col_t3 = st.columns(3)
-            col_t1.metric("Last Close", f"{tech_data['Last Close']:.2f}" if isinstance(tech_data["Last Close"], (int, float)) else tech_data["Last Close"])
-            col_t2.metric("50-Day MA", f"{tech_data['50-Day MA']:.2f}" if isinstance(tech_data["50-Day MA"], (int, float)) else tech_data["50-Day MA"])
-            col_t3.metric("200-Day MA", f"{tech_data['200-Day MA']:.2f}" if isinstance(tech_data["200-Day MA"], (int, float)) else tech_data["200-Day MA"])
-            col_t4, col_t5 = st.columns(2)
-            col_t4.metric("RSI", f"{tech_data['RSI']:.2f}" if isinstance(tech_data["RSI"], (int, float)) else tech_data["RSI"])
-            col_t5.metric("Volume", tech_data["Volume"])
-            try:
-                last_close = float(tech_data["Last Close"]) if isinstance(tech_data["Last Close"], (int, float)) else 0
-                ma50 = float(tech_data["50-Day MA"]) if isinstance(tech_data["50-Day MA"], (int, float)) else 0
-                tss = (last_close / ma50) * 100 if ma50 != 0 else 0
-                tss = round(tss, 2)
-            except Exception:
-                tss = 0
-            st.markdown("#### Technical Strength Score")
-            st.metric("Technical Strength Score", f"{tss}")
-            st.markdown("""
-            **Explanation:**  
-            Calculated as (Last Close / 50-Day MA) × 100, a score above 100 indicates bullish momentum.
-            """)
-            if yf:
-                hist = yf.download(stock_name, period="6mo")
-                if not hist.empty:
-                    hist["MA50"] = hist["Close"].rolling(window=50).mean()
-                    hist["MA200"] = hist["Close"].rolling(window=200).mean()
-                    fig_tech = go.Figure()
-                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
-                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
-                    fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA200"], mode="lines", name="200-Day MA"))
-                    fig_tech.update_layout(title=f"{stock_name.upper()} Price & Moving Averages", xaxis_title="Date", yaxis_title="Price")
-                    st.plotly_chart(fig_tech)
+            last_close = float(tech_data["Last Close"]) if isinstance(tech_data["Last Close"], (int, float)) else 0
+            ma50 = float(tech_data["50-Day MA"]) if isinstance(tech_data["50-Day MA"], (int, float)) else 0
+            technical_strength = (last_close / ma50) * 100 if ma50 != 0 else 0
+        except Exception:
+            technical_strength = 0
+        st.markdown("#### Technical Strength Score")
+        st.metric("Technical Strength", f"{technical_strength:.2f}")
+        st.markdown("""
+        **Technical Strength Explanation:**  
+        Calculated as (Last Close / 50-Day MA) × 100, a score above 100 suggests bullish momentum.
+        """)
+        if yf:
+            hist = yf.download(stock_name, period="6mo")
+            if not hist.empty:
+                hist["MA50"] = hist["Close"].rolling(window=50).mean()
+                hist["MA200"] = hist["Close"].rolling(window=200).mean()
+                fig_tech = go.Figure()
+                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
+                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
+                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA200"], mode="lines", name="200-Day MA"))
+                fig_tech.update_layout(title=f"{stock_name.upper()} Price & Moving Averages", xaxis_title="Date", yaxis_title="Price")
+                st.plotly_chart(fig_tech)
             fig_rsi = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=tech_data["RSI"] if isinstance(tech_data["RSI"], (int, float)) else 0,
@@ -509,95 +497,58 @@ if stock_name:
             st.plotly_chart(fig_rsi)
             st.markdown("""
             **RSI Explanation:**  
-            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, while below 30 may indicate oversold.
+            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, while values below 30 may indicate oversold.
             """)
-        except Exception as e:
-            st.error(f"Error loading technical analysis: {e}")
         
-        st.markdown("### Twitter Analysis")
-        if st.button(f"Load Twitter Analysis for {stock_name.upper()}"):
-            st.info("Loading sample Twitter data...")
-            try:
-                tweets_df = _load_sample_tweets(stock_name)
-                if tweets_df.empty:
-                    st.error("No sample tweets available for this stock.")
-                else:
-                    tweets_df = _analyze_tweet_sentiment(tweets_df)
-                    st.success("Twitter sample tweets loaded and analyzed!")
-                    tw_trend = tweets_df[tweets_df["Sentiment"].isin(["Bullish", "Bearish"])]
-                    if not tw_trend.empty:
-                        tw_count = tw_trend.groupby("Sentiment").size().reset_index(name="Count")
-                        fig_tw = px.pie(tw_count, names="Sentiment", values="Count", title="Twitter Sentiment Indicator",
-                                        color="Sentiment", color_discrete_map={"Bullish": "green", "Bearish": "red"})
-                        st.plotly_chart(fig_tw)
-                    st.dataframe(tweets_df, use_container_width=True)
-                    fig_hist = px.histogram(tweets_df, x="Compound", nbins=20, title="Distribution of Tweet Compound Scores")
-                    st.plotly_chart(fig_hist)
-            except Exception as e:
-                st.error(f"Error in Twitter Analysis: {e}")
-        
+        # Revamped Final Prediction Section
         st.markdown("### Final Prediction")
-        try:
-            # Simulated training data for demonstration
-            train_data = pd.DataFrame({
-                'avg_compound': [0.25, -0.15, 0.20, -0.30, 0.10, -0.05, 0.30, -0.20],
-                'fundamental_score': [130, 70, 120, 60, 100, 85, 140, 65],
-                'technical_score': [105, 95, 102, 90, 100, 98, 110, 88]
-            })
-            train_labels = ['Bullish', 'Bearish', 'Bullish', 'Bearish', 'Bullish', 'Bullish', 'Bullish', 'Bearish']
-            model = LogisticRegression()
-            model.fit(train_data, train_labels)
-            
-            current_avg_compound = articles_df["Compound"].mean()
-            try:
-                pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
-                roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
-                current_fvs = (roe / pe) * 100 if pe != 0 else 0
-                current_fvs = round(current_fvs, 2)
-            except Exception:
-                current_fvs = 0
-            try:
-                last_close = float(tech_data["Last Close"]) if isinstance(tech_data["Last Close"], (int, float)) else 0
-                ma50 = float(tech_data["50-Day MA"]) if isinstance(tech_data["50-Day MA"], (int, float)) else 0
-                current_tss = (last_close / ma50) * 100 if ma50 != 0 else 0
-                current_tss = round(current_tss, 2)
-            except Exception:
-                current_tss = 0
-            
-            X_current = [[current_avg_compound, current_fvs, current_tss]]
-            final_prediction = model.predict(X_current)[0]
-            prob = model.predict_proba(X_current)[0]
-            confidence = max(prob)
-            
-            st.metric("Predicted Trend", final_prediction)
-            st.markdown(f"**Model Confidence:** {confidence*100:.1f}%")
-            
-            fig_intensity = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=confidence * 100,
-                title={"text": "Trend Intensity (%)"},
-                gauge={
-                    "axis": {"range": [0, 100]},
-                    "bar": {"color": "orange"},
-                    "steps": [
-                        {"range": [0, 50], "color": "red"},
-                        {"range": [50, 75], "color": "yellow"},
-                        {"range": [75, 100], "color": "green"}
-                    ]
-                }
-            ))
-            st.plotly_chart(fig_intensity)
-            st.markdown("""
-            **Final Prediction Explanation:**  
-            Our logistic regression model uses:
-            - News Sentiment (Average Compound Score)
-            - Fundamental Value Score (ROE / P/E Ratio × 100)
-            - Technical Strength Score (Last Close / 50-Day MA × 100)
-            to predict the stock's trend.
-            """)
-        except Exception as e:
-            st.error(f"Error generating final prediction: {e}")
+        # Use three features: average sentiment from articles, fundamental score, technical strength
+        avg_sentiment = articles_df["Compound"].mean() if not articles_df.empty else 0
+        feature_vector = [
+            avg_sentiment,
+            fundamental_score,
+            technical_strength
+        ]
+        # For demonstration, simulate training data with these features
+        train_data = pd.DataFrame({
+            'avg_sentiment': [0.30, -0.20, 0.25, -0.30, 0.15, -0.10, 0.35, -0.25],
+            'fund_score': [80, 40, 70, 30, 60, 50, 90, 35],
+            'tech_strength': [110, 95, 105, 90, 100, 98, 115, 92]
+        })
+        train_labels = ['Bullish', 'Bearish', 'Bullish', 'Bearish', 'Bullish', 'Bullish', 'Bullish', 'Bearish']
+        model = LogisticRegression()
+        model.fit(train_data, train_labels)
+        
+        prediction = model.predict(np.array(feature_vector).reshape(1, -1))[0]
+        prob = model.predict_proba(np.array(feature_vector).reshape(1, -1))[0].max()
+        
+        st.metric("Predicted Trend", prediction)
+        st.markdown(f"**Model Confidence:** {prob*100:.1f}%")
+        fig_pred = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=prob*100,
+            title={"text": "Trend Confidence (%)"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": "orange"},
+                "steps": [
+                    {"range": [0, 50], "color": "red"},
+                    {"range": [50, 75], "color": "yellow"},
+                    {"range": [75, 100], "color": "green"}
+                ]
+            }
+        ))
+        st.plotly_chart(fig_pred)
+        st.markdown("""
+        **Final Prediction Explanation:**  
+        The model uses three features:
+        - Average News Sentiment (compound score)
+        - Fundamental Score (ROE / P/E Ratio × 100)
+        - Technical Strength (Last Close / 50-Day MA × 100)
+        to predict the stock's trend. A prediction of **Bullish** suggests a positive outlook, while **Bearish** indicates potential downside.
+        """)
     else:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
