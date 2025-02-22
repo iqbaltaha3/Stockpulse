@@ -8,12 +8,10 @@ from nltk.sentiment import SentimentIntensityAnalyzer
 import plotly.graph_objects as go
 import plotly.express as px
 from bs4 import BeautifulSoup
-import joblib
-from sklearn.linear_model import LogisticRegression
 import numpy as np
 import time
 
-# Use Finnhub API – insert your API key here
+# Finnhub API key (replace with your own key)
 finnhub_api_key = "cusrje1r01qnihs8c29gcusrje1r01qnihs8c2a0"
 
 # ------------------------------
@@ -96,11 +94,10 @@ st.markdown("""
 # ------------------------------
 st.markdown("""
     <div class="header">StockPulse</div>
-    <div class="subheader">Advanced Sentiment Analysis & Live Market Insights</div>
+    <div class="subheader">Live Fundamental, Technical & Sentiment Analysis</div>
     <div class="landing">
-      Welcome to <strong>StockPulse</strong> – a cutting-edge tool for retail investors.
-      This application aggregates full-text news articles from 20 reputed Indian financial news websites and performs advanced sentiment analysis 
-      to gauge the market outlook of your chosen stock.
+      Welcome to <strong>StockPulse</strong> – a tool for retail investors.
+      We fetch live fundamental and technical data using Finnhub’s API and display current news sentiment from scraped articles.
       <br><br>
     </div>
 """, unsafe_allow_html=True)
@@ -222,7 +219,6 @@ def _plot_source_distribution(articles_df):
         st.info("Not enough data for source distribution analysis.")
         return
     pivot = filtered_df.groupby(["Website", "Overall Sentiment"]).size().unstack(fill_value=0)
-    # Ensure both columns exist
     for col in ["Bullish", "Bearish"]:
         if col not in pivot.columns:
             pivot[col] = 0
@@ -257,33 +253,8 @@ def _plot_trend_strength(articles_df):
     st.plotly_chart(fig)
     st.markdown("**Trend Strength Explanation:** Values near +1 indicate bullish sentiment; near -1 indicate bearish.")
 
-def _load_sample_tweets(stock):
-    data = [
-         {"Date": "2023-08-01", "Username": "investor1", "Content": f"{stock} is looking strong today! Great buy opportunity."},
-         {"Date": "2023-08-02", "Username": "trader2", "Content": f"I am not sure about {stock}, seems overvalued."},
-         {"Date": "2023-08-03", "Username": "marketguru", "Content": f"{stock} is crashing, very bearish signal."},
-         {"Date": "2023-08-04", "Username": "bullish_bear", "Content": f"Solid performance by {stock} despite market volatility."},
-         {"Date": "2023-08-05", "Username": "trader123", "Content": f"{stock} appears to be recovering after a dip."},
-    ]
-    return pd.DataFrame(data)
-
-def _analyze_tweet_sentiment(df):
-    sentiments, compounds = [], []
-    for content in df["Content"]:
-        score = sia.polarity_scores(content)["compound"]
-        compounds.append(score)
-        if score >= 0.05:
-            sentiments.append("Bullish")
-        elif score <= -0.05:
-            sentiments.append("Bearish")
-        else:
-            sentiments.append("Neutral")
-    df["Compound"] = compounds
-    df["Sentiment"] = sentiments
-    return df
-
 # ------------------------------
-# Revamped Fundamental Analysis Section (Using Finnhub)
+# Revamped Fundamental Analysis Section (Using Finnhub API)
 # ------------------------------
 def get_fundamental_data_finnhub(stock, api_key):
     url = f"https://finnhub.io/api/v1/stock/metric?symbol={stock.upper()}&metric=all&token={api_key}"
@@ -292,29 +263,33 @@ def get_fundamental_data_finnhub(stock, api_key):
         data = response.json()
         metric = data.get("metric", {})
         fundamentals = {
-            "Stock": stock.upper(),
-            "P/E Ratio": metric.get("trailingPE"),
-            "EPS": metric.get("trailingEps"),
+            "Trailing P/E": metric.get("trailingPE"),
+            "Trailing EPS": metric.get("trailingEps"),
             "Market Cap": metric.get("marketCapitalization"),
-            "Dividend Yield (%)": metric.get("dividendYield"),
-            "ROE (%)": metric.get("returnOnEquity")
+            "Dividend Yield": metric.get("dividendYield"),  # fraction
+            "ROE": metric.get("returnOnEquity"),
+            "52 Week High": metric.get("52WeekHigh"),
+            "52 Week Low": metric.get("52WeekLow"),
+            "Beta": metric.get("beta")
         }
         return fundamentals
     return {
-        "Stock": stock.upper(),
-        "P/E Ratio": None,
-        "EPS": None,
+        "Trailing P/E": None,
+        "Trailing EPS": None,
         "Market Cap": None,
-        "Dividend Yield (%)": None,
-        "ROE (%)": None
+        "Dividend Yield": None,
+        "ROE": None,
+        "52 Week High": None,
+        "52 Week Low": None,
+        "Beta": None
     }
 
 # ------------------------------
-# Revamped Technical Analysis Section (Using Finnhub Candle Data)
+# Revamped Technical Analysis Section (Using Finnhub Candle API)
 # ------------------------------
 def get_technical_data_finnhub(stock, api_key):
     end_time = int(time.time())
-    start_time = end_time - 31536000  # one year of data
+    start_time = end_time - 31536000  # 1 year
     url = f"https://finnhub.io/api/v1/stock/candle?symbol={stock.upper()}&resolution=D&from={start_time}&to={end_time}&token={api_key}"
     response = requests.get(url)
     if response.status_code == 200:
@@ -322,43 +297,28 @@ def get_technical_data_finnhub(stock, api_key):
         if data.get("s") == "ok":
             df = pd.DataFrame({
                 "Timestamp": data["t"],
-                "Open": data["o"],
-                "High": data["h"],
-                "Low": data["l"],
                 "Close": data["c"],
                 "Volume": data["v"]
             })
             df["Date"] = pd.to_datetime(df["Timestamp"], unit="s")
             df = df.sort_values("Date")
-            df["MA50"] = df["Close"].rolling(window=50).mean()
-            df["MA200"] = df["Close"].rolling(window=200).mean()
-            # RSI calculation with 14-day period
-            df["Delta"] = df["Close"].diff()
-            df["Gain"] = df["Delta"].apply(lambda x: x if x > 0 else 0)
-            df["Loss"] = df["Delta"].apply(lambda x: -x if x < 0 else 0)
-            df["AvgGain"] = df["Gain"].rolling(window=14).mean()
-            df["AvgLoss"] = df["Loss"].rolling(window=14).mean()
-            df["RS"] = df["AvgGain"] / df["AvgLoss"]
-            df["RSI"] = 100 - (100 / (1 + df["RS"]))
-            df = df.dropna()
-            if not df.empty:
-                last = df.iloc[-1]
-                tech_data = {
-                    "Stock": stock.upper(),
-                    "Last Close": last["Close"],
-                    "50-Day MA": last["MA50"],
-                    "200-Day MA": last["MA200"],
-                    "RSI": last["RSI"],
-                    "Volume": last["Volume"]
-                }
-                return tech_data
+            # Compute 52-week high and low from the close prices
+            week52_high = df["Close"].max()
+            week52_low = df["Close"].min()
+            # Use the last close as the current price
+            last = df.iloc[-1]
+            tech_data = {
+                "Last Close": last["Close"],
+                "Volume": last["Volume"],
+                "52 Week High": week52_high,
+                "52 Week Low": week52_low
+            }
+            return tech_data
     return {
-        "Stock": stock.upper(),
         "Last Close": None,
-        "50-Day MA": None,
-        "200-Day MA": None,
-        "RSI": None,
-        "Volume": None
+        "Volume": None,
+        "52 Week High": None,
+        "52 Week Low": None
     }
 
 # ------------------------------
@@ -367,7 +327,7 @@ def get_technical_data_finnhub(stock, api_key):
 stock_name = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA) to analyze:", "")
 
 if stock_name:
-    # --- News & Sentiment Section (Unchanged) ---
+    # --- News & Sentiment Section ---
     status_placeholder = st.empty()
     status_placeholder.info(f"Fetching full articles for **{stock_name.upper()}**. Please wait...")
     try:
@@ -433,136 +393,67 @@ if stock_name:
         except Exception as e:
             st.error(f"Error generating trend strength chart: {e}")
         
-        # --- Fundamental Analysis Section (Using Finnhub) ---
+        # --- Fundamental Analysis Section ---
         st.markdown("### Fundamental Analysis")
         fund_data = get_fundamental_data_finnhub(stock_name, finnhub_api_key)
         st.markdown("#### Key Fundamental Metrics")
         col_f1, col_f2, col_f3 = st.columns(3)
-        col_f1.metric("Trailing P/E", f"{fund_data['P/E Ratio']:.2f}" if isinstance(fund_data["P/E Ratio"], (int, float)) else "N/A")
-        col_f2.metric("Trailing EPS", f"{fund_data['EPS']:.2f}" if isinstance(fund_data["EPS"], (int, float)) else "N/A")
+        col_f1.metric("Trailing P/E", f"{fund_data['Trailing P/E']:.2f}" if isinstance(fund_data["Trailing P/E"], (int, float)) else "N/A")
+        col_f2.metric("Trailing EPS", f"{fund_data['Trailing EPS']:.2f}" if isinstance(fund_data["Trailing EPS"], (int, float)) else "N/A")
         col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else "N/A")
         col_f4, col_f5 = st.columns(2)
-        dyield = fund_data["Dividend Yield (%)"]
+        dyield = fund_data["Dividend Yield"]
         col_f4.metric("Dividend Yield", f"{dyield*100:.2f}%" if isinstance(dyield, (int, float)) else "N/A")
-        col_f5.metric("ROE", f"{fund_data['ROE (%)']*100:.2f}%" if isinstance(fund_data["ROE (%)"], (int, float)) else "N/A")
-        # Fundamental Score = (ROE / P/E) * 100 (if available)
-        try:
-            pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
-            roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
-            fundamental_score = (roe / pe) * 100 if pe != 0 else 0
-            fundamental_score = round(fundamental_score, 2)
-        except Exception:
-            fundamental_score = 0
-        st.markdown("#### Fundamental Score")
-        st.metric("Fundamental Score", f"{fundamental_score:.2f}")
-        st.markdown("""
-        **Fundamental Score Explanation:**  
-        This score is computed as (ROE / Trailing P/E) × 100. A higher score may suggest the company is undervalued relative to its profitability.
-        """)
+        col_f5.metric("ROE", f"{fund_data['ROE']*100:.2f}%" if isinstance(fund_data["ROE"], (int, float)) else "N/A")
+        st.markdown("#### Additional Metrics")
+        col_f6, col_f7 = st.columns(2)
+        col_f6.metric("52-Week High", f"{fund_data['52 Week High']:.2f}" if isinstance(fund_data["52 Week High"], (int, float)) else "N/A")
+        col_f7.metric("52-Week Low", f"{fund_data['52 Week Low']:.2f}" if isinstance(fund_data["52 Week Low"], (int, float)) else "N/A")
+        st.metric("Beta", f"{fund_data['Beta']:.2f}" if isinstance(fund_data["Beta"], (int, float)) else "N/A")
         
-        # --- Technical Analysis Section (Using Finnhub Candle Data) ---
+        # --- Technical Analysis Section ---
         st.markdown("### Technical Analysis")
         tech_data = get_technical_data_finnhub(stock_name, finnhub_api_key)
         st.markdown("#### Key Technical Indicators")
-        col_t1, col_t2, col_t3 = st.columns(3)
+        col_t1, col_t2 = st.columns(2)
         col_t1.metric("Last Close", f"{tech_data['Last Close']:.2f}" if isinstance(tech_data["Last Close"], (int, float)) else "N/A")
-        col_t2.metric("50-Day MA", f"{tech_data['50-Day MA']:.2f}" if isinstance(tech_data["50-Day MA"], (int, float)) else "N/A")
-        col_t3.metric("200-Day MA", f"{tech_data['200-Day MA']:.2f}" if isinstance(tech_data["200-Day MA"], (int, float)) else "N/A")
-        col_t4, col_t5 = st.columns(2)
-        col_t4.metric("RSI", f"{tech_data['RSI']:.2f}" if isinstance(tech_data["RSI"], (int, float)) else "N/A")
-        col_t5.metric("Volume", tech_data["Volume"] if tech_data["Volume"] is not None else "N/A")
-        # Technical Strength Score = (Last Close / 50-Day MA) * 100
-        try:
-            last_close = float(tech_data["Last Close"]) if isinstance(tech_data["Last Close"], (int, float)) else 0
-            ma50 = float(tech_data["50-Day MA"]) if isinstance(tech_data["50-Day MA"], (int, float)) else 0
-            technical_strength = (last_close / ma50) * 100 if ma50 != 0 else 0
-            technical_strength = round(technical_strength, 2)
-        except Exception:
-            technical_strength = 0
-        st.markdown("#### Technical Strength")
-        st.metric("Technical Strength", f"{technical_strength:.2f}")
-        st.markdown("""
-        **Technical Strength Explanation:**  
-        This score is computed as (Last Close / 50-Day MA) × 100. A value above 100 may indicate bullish momentum.
-        """)
-        # Price Chart with Moving Averages
-        if yf:
-            hist = yf.download(stock_name, period="1y")
-            if not hist.empty:
-                hist["MA50"] = hist["Close"].rolling(window=50).mean()
-                hist["MA200"] = hist["Close"].rolling(window=200).mean()
-                fig_tech = go.Figure()
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", name="Close Price"))
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA50"], mode="lines", name="50-Day MA"))
-                fig_tech.add_trace(go.Scatter(x=hist.index, y=hist["MA200"], mode="lines", name="200-Day MA"))
-                fig_tech.update_layout(title=f"{stock_name.upper()} Price & Moving Averages", xaxis_title="Date", yaxis_title="Price")
-                st.plotly_chart(fig_tech)
-            fig_rsi = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=tech_data["RSI"] if isinstance(tech_data["RSI"], (int, float)) else 0,
-                title={"text": "RSI"},
-                gauge={"axis": {"range": [0, 100]},
-                       "bar": {"color": "blue"},
-                       "steps": [
-                           {"range": [0, 30], "color": "red"},
-                           {"range": [30, 70], "color": "gray"},
-                           {"range": [70, 100], "color": "green"}
-                       ]}
-            ))
-            fig_rsi.update_layout(title="Relative Strength Index (RSI)")
-            st.plotly_chart(fig_rsi)
-            st.markdown("""
-            **RSI Explanation:**  
-            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, while values below 30 may indicate oversold.
-            """)
+        col_t2.metric("Volume", tech_data["Volume"] if tech_data["Volume"] is not None else "N/A")
+        col_t3, col_t4 = st.columns(2)
+        col_t3.metric("52-Week High", f"{tech_data['52 Week High']:.2f}" if isinstance(tech_data["52 Week High"], (int, float)) else "N/A")
+        col_t4.metric("52-Week Low", f"{tech_data['52 Week Low']:.2f}" if isinstance(tech_data["52 Week Low"], (int, float)) else "N/A")
+        # Price Chart: Plot the "Close" prices over the last year
+        if tech_data["Last Close"] is not None:
+            # For simplicity, re-fetch the candle data to plot the price chart.
+            end_time = int(time.time())
+            start_time = end_time - 31536000
+            url = f"https://finnhub.io/api/v1/stock/candle?symbol={stock_name.upper()}&resolution=D&from={start_time}&to={end_time}&token={finnhub_api_key}"
+            resp = requests.get(url)
+            if resp.status_code == 200:
+                candle_data = resp.json()
+                if candle_data.get("s") == "ok":
+                    df_chart = pd.DataFrame({
+                        "Timestamp": candle_data["t"],
+                        "Close": candle_data["c"]
+                    })
+                    df_chart["Date"] = pd.to_datetime(df_chart["Timestamp"], unit="s")
+                    df_chart = df_chart.sort_values("Date")
+                    fig_chart = go.Figure(go.Scatter(x=df_chart["Date"], y=df_chart["Close"], mode="lines", name="Close Price"))
+                    fig_chart.update_layout(title=f"{stock_name.upper()} Price Chart (1Y)", xaxis_title="Date", yaxis_title="Close Price")
+                    st.plotly_chart(fig_chart)
         
-        # --- Final Prediction Section ---
-        st.markdown("### Final Prediction")
-        # Build a feature vector: average news sentiment, fundamental score, technical strength
-        avg_sentiment = articles_df["Compound"].mean() if not articles_df.empty else 0
-        feature_vector = [avg_sentiment, fundamental_score, technical_strength]
-        # For demonstration, we train a simple logistic regression model on simulated data
-        train_data = pd.DataFrame({
-            'avg_sentiment': [0.30, -0.20, 0.25, -0.30, 0.15, -0.10, 0.35, -0.25],
-            'fund_score': [80, 40, 70, 30, 60, 50, 90, 35],
-            'tech_strength': [110, 95, 105, 90, 100, 98, 115, 92]
-        })
-        train_labels = ['Bullish', 'Bearish', 'Bullish', 'Bearish', 'Bullish', 'Bullish', 'Bullish', 'Bearish']
-        model = LogisticRegression()
-        model.fit(train_data, train_labels)
+        # --- Sentiment Analysis (Final Section) ---
+        st.markdown("### News Sentiment")
+        if not articles_df.empty:
+            avg_sentiment = articles_df["Compound"].mean()
+            st.metric("Average News Sentiment (Compound Score)", f"{avg_sentiment:.2f}")
+        else:
+            st.metric("Average News Sentiment (Compound Score)", "N/A")
         
-        prediction = model.predict(np.array(feature_vector).reshape(1, -1))[0]
-        confidence = model.predict_proba(np.array(feature_vector).reshape(1, -1))[0].max()
-        
-        st.metric("Predicted Trend", prediction)
-        st.markdown(f"**Model Confidence:** {confidence*100:.1f}%")
-        fig_pred = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=confidence*100,
-            title={"text": "Trend Confidence (%)"},
-            gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": "orange"},
-                "steps": [
-                    {"range": [0, 50], "color": "red"},
-                    {"range": [50, 75], "color": "yellow"},
-                    {"range": [75, 100], "color": "green"}
-                ]
-            }
-        ))
-        st.plotly_chart(fig_pred)
-        st.markdown("""
-        **Final Prediction Explanation:**  
-        The model uses three features:
-        - Average News Sentiment (Compound Score)
-        - Fundamental Score (ROE / Trailing P/E × 100)
-        - Technical Strength (Last Close / 50-Day MA × 100)
-        to predict the stock's trend. A prediction of **Bullish** suggests a positive outlook, while **Bearish** indicates potential downside.
-        """)
     else:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
 
 
