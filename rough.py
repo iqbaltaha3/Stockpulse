@@ -12,20 +12,12 @@ import joblib
 from sklearn.linear_model import LogisticRegression
 import numpy as np
 
-# Try to import yfinance for live data; if unavailable, live data will be incomplete.
+# Attempt to import yfinance for live data
 try:
     import yfinance as yf
 except ImportError:
     yf = None
-    st.warning("yfinance not installed. Live fundamental and technical data may be incomplete.")
-
-# ------------------------------
-# (Optional) Future API Integration
-# ------------------------------
-# For Twitter API integration using Tweepy, add your credentials here:
-# ...
-# To use a pre-trained model, load it with:
-# model = joblib.load("model.pkl")
+    st.warning("yfinance not installed. Live data may be incomplete.")
 
 # ------------------------------
 # Download and Initialize NLTK Data
@@ -117,7 +109,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# Internal Utility Functions (News Scraping & Sentiment)
+# News Scraping & Sentiment Functions
 # ------------------------------
 def _fetch_article_text(url):
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -232,7 +224,12 @@ def _plot_source_distribution(articles_df):
     if filtered_df.empty:
         st.info("Not enough data for source distribution analysis.")
         return
-    pivot = filtered_df.groupby(["Website", "Overall Sentiment"]).size().unstack(fill_value=0).reset_index()
+    pivot = filtered_df.groupby(["Website", "Overall Sentiment"]).size().unstack(fill_value=0)
+    # Ensure both 'Bullish' and 'Bearish' columns exist
+    for col in ["Bullish", "Bearish"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+    pivot = pivot.reset_index()
     fig = px.bar(pivot, x="Website", y=["Bullish", "Bearish"],
                  title="Sentiment Distribution by Source",
                  labels={"value": "Article Count", "Website": "Source"},
@@ -289,11 +286,11 @@ def _analyze_tweet_sentiment(df):
     return df
 
 # ------------------------------
-# Fundamental Analysis – Live Data & Metrics
+# Revamped Fundamental Analysis Section
 # ------------------------------
 def get_fundamental_data(stock):
     fundamentals = {}
-    if yf is not None:
+    if yf:
         try:
             ticker = yf.Ticker(stock)
             info = ticker.info
@@ -301,23 +298,24 @@ def get_fundamental_data(stock):
             info = {}
     else:
         info = {}
-    # Use live data; if a value is missing, show "N/A"
+    # Fetch live fundamental data; missing values remain as None and will be shown as "N/A"
     fundamentals["Stock"] = info.get("symbol", stock.upper())
-    fundamentals["P/E Ratio"] = info.get("trailingPE", "N/A")
-    fundamentals["EPS"] = info.get("trailingEps", "N/A")
-    fundamentals["Market Cap"] = info.get("marketCap", "N/A")
-    fundamentals["Dividend Yield (%)"] = info.get("dividendYield", "N/A")
-    fundamentals["ROE (%)"] = info.get("returnOnEquity", "N/A")
+    fundamentals["P/E Ratio"] = info.get("trailingPE")
+    fundamentals["EPS"] = info.get("trailingEps")
+    fundamentals["Market Cap"] = info.get("marketCap")
+    fundamentals["Dividend Yield (%)"] = info.get("dividendYield")
+    fundamentals["ROE (%)"] = info.get("returnOnEquity")
     return fundamentals
 
 # ------------------------------
-# Technical Analysis – Live Data & Metrics
+# Revamped Technical Analysis Section
 # ------------------------------
 def get_technical_data(stock):
     tech_data = {}
-    if yf is not None:
+    if yf:
         try:
-            hist = yf.download(stock, period="6mo")
+            # Fetch one year of historical data to improve data availability
+            hist = yf.download(stock, period="1y")
         except Exception:
             hist = pd.DataFrame()
     else:
@@ -342,9 +340,9 @@ def get_technical_data(stock):
             tech_data["RSI"] = last["RSI"]
             tech_data["Volume"] = last["Volume"]
         else:
-            tech_data = {key: "N/A" for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
+            tech_data = {key: None for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
     else:
-        tech_data = {key: "N/A" for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
+        tech_data = {key: None for key in ["Stock", "Last Close", "50-Day MA", "200-Day MA", "RSI", "Volume"]}
     return tech_data
 
 # ------------------------------
@@ -423,20 +421,19 @@ if stock_name:
         fund_data = get_fundamental_data(stock_name)
         st.markdown("#### Key Fundamental Metrics")
         col_f1, col_f2, col_f3 = st.columns(3)
-        col_f1.metric("P/E Ratio", fund_data["P/E Ratio"])
-        col_f2.metric("EPS", fund_data["EPS"])
-        col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else fund_data["Market Cap"])
+        col_f1.metric("P/E Ratio", fund_data["P/E Ratio"] if fund_data["P/E Ratio"] is not None else "N/A")
+        col_f2.metric("EPS", fund_data["EPS"] if fund_data["EPS"] is not None else "N/A")
+        col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else "N/A")
         col_f4, col_f5 = st.columns(2)
         dyield = fund_data["Dividend Yield (%)"]
-        if isinstance(dyield, (int, float)):
-            dyield = f"{dyield*100:.2f}%"
-        col_f4.metric("Dividend Yield", dyield)
-        col_f5.metric("ROE (%)", fund_data["ROE (%)"])
-        # Calculate Fundamental Score = (ROE / P/E Ratio) * 100 (using 0 if unavailable)
+        col_f4.metric("Dividend Yield", f"{dyield*100:.2f}%" if isinstance(dyield, (int, float)) else "N/A")
+        col_f5.metric("ROE (%)", f"{fund_data['ROE (%)']*100:.2f}%" if isinstance(fund_data["ROE (%)"], (int, float)) else "N/A")
+        # Calculate Fundamental Score = (ROE / P/E Ratio) * 100 (treat missing as 0)
         try:
             pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
             roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
             fundamental_score = (roe / pe) * 100 if pe != 0 else 0
+            fundamental_score = round(fundamental_score, 2)
         except Exception:
             fundamental_score = 0
         st.markdown("#### Fundamental Value Score")
@@ -451,17 +448,18 @@ if stock_name:
         tech_data = get_technical_data(stock_name)
         st.markdown("#### Key Technical Indicators")
         col_t1, col_t2, col_t3 = st.columns(3)
-        col_t1.metric("Last Close", f"{tech_data['Last Close']:.2f}" if isinstance(tech_data["Last Close"], (int, float)) else tech_data["Last Close"])
-        col_t2.metric("50-Day MA", f"{tech_data['50-Day MA']:.2f}" if isinstance(tech_data["50-Day MA"], (int, float)) else tech_data["50-Day MA"])
-        col_t3.metric("200-Day MA", f"{tech_data['200-Day MA']:.2f}" if isinstance(tech_data["200-Day MA"], (int, float)) else tech_data["200-Day MA"])
+        col_t1.metric("Last Close", f"{tech_data['Last Close']:.2f}" if isinstance(tech_data["Last Close"], (int, float)) else "N/A")
+        col_t2.metric("50-Day MA", f"{tech_data['50-Day MA']:.2f}" if isinstance(tech_data["50-Day MA"], (int, float)) else "N/A")
+        col_t3.metric("200-Day MA", f"{tech_data['200-Day MA']:.2f}" if isinstance(tech_data["200-Day MA"], (int, float)) else "N/A")
         col_t4, col_t5 = st.columns(2)
-        col_t4.metric("RSI", f"{tech_data['RSI']:.2f}" if isinstance(tech_data["RSI"], (int, float)) else tech_data["RSI"])
-        col_t5.metric("Volume", tech_data["Volume"])
+        col_t4.metric("RSI", f"{tech_data['RSI']:.2f}" if isinstance(tech_data["RSI"], (int, float)) else "N/A")
+        col_t5.metric("Volume", tech_data["Volume"] if tech_data["Volume"] is not None else "N/A")
         # Calculate Technical Strength Score = (Last Close / 50-Day MA) * 100
         try:
             last_close = float(tech_data["Last Close"]) if isinstance(tech_data["Last Close"], (int, float)) else 0
             ma50 = float(tech_data["50-Day MA"]) if isinstance(tech_data["50-Day MA"], (int, float)) else 0
             technical_strength = (last_close / ma50) * 100 if ma50 != 0 else 0
+            technical_strength = round(technical_strength, 2)
         except Exception:
             technical_strength = 0
         st.markdown("#### Technical Strength Score")
@@ -471,7 +469,7 @@ if stock_name:
         Calculated as (Last Close / 50-Day MA) × 100, a score above 100 suggests bullish momentum.
         """)
         if yf:
-            hist = yf.download(stock_name, period="6mo")
+            hist = yf.download(stock_name, period="1y")
             if not hist.empty:
                 hist["MA50"] = hist["Close"].rolling(window=50).mean()
                 hist["MA200"] = hist["Close"].rolling(window=200).mean()
@@ -502,14 +500,10 @@ if stock_name:
         
         # Revamped Final Prediction Section
         st.markdown("### Final Prediction")
-        # Use three features: average sentiment from articles, fundamental score, technical strength
+        # Build feature vector: average sentiment, fundamental score, technical strength
         avg_sentiment = articles_df["Compound"].mean() if not articles_df.empty else 0
-        feature_vector = [
-            avg_sentiment,
-            fundamental_score,
-            technical_strength
-        ]
-        # For demonstration, simulate training data with these features
+        feature_vector = [avg_sentiment, fundamental_score, technical_strength]
+        # For demonstration, we simulate training data with similar features
         train_data = pd.DataFrame({
             'avg_sentiment': [0.30, -0.20, 0.25, -0.30, 0.15, -0.10, 0.35, -0.25],
             'fund_score': [80, 40, 70, 30, 60, 50, 90, 35],
@@ -520,13 +514,13 @@ if stock_name:
         model.fit(train_data, train_labels)
         
         prediction = model.predict(np.array(feature_vector).reshape(1, -1))[0]
-        prob = model.predict_proba(np.array(feature_vector).reshape(1, -1))[0].max()
+        confidence = model.predict_proba(np.array(feature_vector).reshape(1, -1))[0].max()
         
         st.metric("Predicted Trend", prediction)
-        st.markdown(f"**Model Confidence:** {prob*100:.1f}%")
+        st.markdown(f"**Model Confidence:** {confidence*100:.1f}%")
         fig_pred = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=prob*100,
+            value=confidence*100,
             title={"text": "Trend Confidence (%)"},
             gauge={
                 "axis": {"range": [0, 100]},
@@ -551,4 +545,5 @@ if stock_name:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
