@@ -341,10 +341,10 @@ def get_fundamental_data(stock):
         try:
             ticker = yf.Ticker(stock)
             info = ticker.info
-            if not info or 'regularMarketPrice' not in info:
-                raise ValueError("Incomplete fundamental data")
+            if not info or len(info)==0:
+                raise ValueError("No fundamental data returned")
             fundamentals = {
-               "Stock": info.get("symbol", "N/A"),
+               "Stock": info.get("symbol", stock.upper()),
                "P/E Ratio": info.get("trailingPE", "N/A"),
                "EPS": info.get("trailingEps", "N/A"),
                "Market Cap": info.get("marketCap", "N/A"),
@@ -371,8 +371,8 @@ def get_technical_data(stock):
         try:
             # Using yf.download for more reliable data retrieval
             hist = yf.download(stock, period="6mo")
-            if hist.empty:
-                raise ValueError("No historical data retrieved")
+            if hist.empty or "Close" not in hist.columns:
+                raise ValueError("No historical data or 'Close' column missing")
             hist["MA50"] = hist["Close"].rolling(window=50).mean()
             hist["MA200"] = hist["Close"].rolling(window=200).mean()
             delta = hist["Close"].diff()
@@ -382,7 +382,9 @@ def get_technical_data(stock):
             ma_down = down.rolling(window=14).mean()
             rs = ma_up / ma_down
             hist["RSI"] = 100 - (100 / (1 + rs))
-            last = hist.iloc[-1]
+            if hist.dropna().empty:
+                raise ValueError("Not enough data after applying moving averages")
+            last = hist.dropna().iloc[-1]
             technicals = {
                  "Stock": stock.upper(),
                  "Last Close": last["Close"],
@@ -661,5 +663,6 @@ if stock_name:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
 
