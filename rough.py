@@ -12,9 +12,8 @@ import joblib
 from sklearn.linear_model import LogisticRegression
 import numpy as np
 import time
-import datetime
 
-# Finnhub API key
+# Use Finnhub API – insert your API key here
 finnhub_api_key = "cusrje1r01qnihs8c29gcusrje1r01qnihs8c2a0"
 
 # ------------------------------
@@ -100,14 +99,14 @@ st.markdown("""
     <div class="subheader">Advanced Sentiment Analysis & Live Market Insights</div>
     <div class="landing">
       Welcome to <strong>StockPulse</strong> – a cutting-edge tool for retail investors.
-      The app aggregates full-text news articles from 20 reputed Indian financial news websites and performs advanced sentiment analysis 
-      to gauge the bullish or bearish outlook of your chosen stock.
+      This application aggregates full-text news articles from 20 reputed Indian financial news websites and performs advanced sentiment analysis 
+      to gauge the market outlook of your chosen stock.
       <br><br>
     </div>
 """, unsafe_allow_html=True)
 
 # ------------------------------
-# News Scraping & Sentiment Functions (Unchanged)
+# News Scraping & Sentiment Functions
 # ------------------------------
 def _fetch_article_text(url):
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -223,6 +222,7 @@ def _plot_source_distribution(articles_df):
         st.info("Not enough data for source distribution analysis.")
         return
     pivot = filtered_df.groupby(["Website", "Overall Sentiment"]).size().unstack(fill_value=0)
+    # Ensure both columns exist
     for col in ["Bullish", "Bearish"]:
         if col not in pivot.columns:
             pivot[col] = 0
@@ -296,7 +296,7 @@ def get_fundamental_data_finnhub(stock, api_key):
             "P/E Ratio": metric.get("trailingPE"),
             "EPS": metric.get("trailingEps"),
             "Market Cap": metric.get("marketCapitalization"),
-            "Dividend Yield (%)": metric.get("dividendYield"),  # fraction
+            "Dividend Yield (%)": metric.get("dividendYield"),
             "ROE (%)": metric.get("returnOnEquity")
         }
         return fundamentals
@@ -367,7 +367,7 @@ def get_technical_data_finnhub(stock, api_key):
 stock_name = st.text_input("Enter a stock symbol (e.g., AAPL, TSLA) to analyze:", "")
 
 if stock_name:
-    # Fetch news articles and perform sentiment analysis (unchanged)
+    # --- News & Sentiment Section (Unchanged) ---
     status_placeholder = st.empty()
     status_placeholder.info(f"Fetching full articles for **{stock_name.upper()}**. Please wait...")
     try:
@@ -433,19 +433,19 @@ if stock_name:
         except Exception as e:
             st.error(f"Error generating trend strength chart: {e}")
         
-        # Revamped Fundamental Analysis using Finnhub
+        # --- Fundamental Analysis Section (Using Finnhub) ---
         st.markdown("### Fundamental Analysis")
         fund_data = get_fundamental_data_finnhub(stock_name, finnhub_api_key)
         st.markdown("#### Key Fundamental Metrics")
         col_f1, col_f2, col_f3 = st.columns(3)
-        col_f1.metric("P/E Ratio", f"{fund_data['P/E Ratio']:.2f}" if isinstance(fund_data["P/E Ratio"], (int, float)) else "N/A")
-        col_f2.metric("EPS", f"{fund_data['EPS']:.2f}" if isinstance(fund_data["EPS"], (int, float)) else "N/A")
+        col_f1.metric("Trailing P/E", f"{fund_data['P/E Ratio']:.2f}" if isinstance(fund_data["P/E Ratio"], (int, float)) else "N/A")
+        col_f2.metric("Trailing EPS", f"{fund_data['EPS']:.2f}" if isinstance(fund_data["EPS"], (int, float)) else "N/A")
         col_f3.metric("Market Cap", f"{fund_data['Market Cap']:,}" if isinstance(fund_data["Market Cap"], (int, float)) else "N/A")
         col_f4, col_f5 = st.columns(2)
         dyield = fund_data["Dividend Yield (%)"]
         col_f4.metric("Dividend Yield", f"{dyield*100:.2f}%" if isinstance(dyield, (int, float)) else "N/A")
-        col_f5.metric("ROE (%)", f"{fund_data['ROE (%)']*100:.2f}%" if isinstance(fund_data["ROE (%)"], (int, float)) else "N/A")
-        # Fundamental Score = (ROE / P/E Ratio) * 100 (treat missing as 0)
+        col_f5.metric("ROE", f"{fund_data['ROE (%)']*100:.2f}%" if isinstance(fund_data["ROE (%)"], (int, float)) else "N/A")
+        # Fundamental Score = (ROE / P/E) * 100 (if available)
         try:
             pe = float(fund_data["P/E Ratio"]) if isinstance(fund_data["P/E Ratio"], (int, float)) else 0
             roe = float(fund_data["ROE (%)"]) if isinstance(fund_data["ROE (%)"], (int, float)) else 0
@@ -453,14 +453,14 @@ if stock_name:
             fundamental_score = round(fundamental_score, 2)
         except Exception:
             fundamental_score = 0
-        st.markdown("#### Fundamental Value Score")
+        st.markdown("#### Fundamental Score")
         st.metric("Fundamental Score", f"{fundamental_score:.2f}")
         st.markdown("""
         **Fundamental Score Explanation:**  
-        Calculated as (ROE / P/E Ratio) × 100, a higher score may suggest the company is undervalued relative to its profitability.
+        This score is computed as (ROE / Trailing P/E) × 100. A higher score may suggest the company is undervalued relative to its profitability.
         """)
         
-        # Revamped Technical Analysis using Finnhub
+        # --- Technical Analysis Section (Using Finnhub Candle Data) ---
         st.markdown("### Technical Analysis")
         tech_data = get_technical_data_finnhub(stock_name, finnhub_api_key)
         st.markdown("#### Key Technical Indicators")
@@ -479,13 +479,13 @@ if stock_name:
             technical_strength = round(technical_strength, 2)
         except Exception:
             technical_strength = 0
-        st.markdown("#### Technical Strength Score")
+        st.markdown("#### Technical Strength")
         st.metric("Technical Strength", f"{technical_strength:.2f}")
         st.markdown("""
         **Technical Strength Explanation:**  
-        Calculated as (Last Close / 50-Day MA) × 100, a score above 100 indicates bullish momentum.
+        This score is computed as (Last Close / 50-Day MA) × 100. A value above 100 may indicate bullish momentum.
         """)
-        # Plot price & moving averages chart
+        # Price Chart with Moving Averages
         if yf:
             hist = yf.download(stock_name, period="1y")
             if not hist.empty:
@@ -513,15 +513,15 @@ if stock_name:
             st.plotly_chart(fig_rsi)
             st.markdown("""
             **RSI Explanation:**  
-            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, while below 30 may indicate oversold.
+            RSI = 100 - (100 / (1 + RS)); values above 70 may indicate overbought conditions, while values below 30 may indicate oversold.
             """)
         
-        # Revamped Final Prediction Section
+        # --- Final Prediction Section ---
         st.markdown("### Final Prediction")
-        # Build feature vector: average news sentiment, fundamental score, technical strength
+        # Build a feature vector: average news sentiment, fundamental score, technical strength
         avg_sentiment = articles_df["Compound"].mean() if not articles_df.empty else 0
         feature_vector = [avg_sentiment, fundamental_score, technical_strength]
-        # Simulated training data for demonstration
+        # For demonstration, we train a simple logistic regression model on simulated data
         train_data = pd.DataFrame({
             'avg_sentiment': [0.30, -0.20, 0.25, -0.30, 0.15, -0.10, 0.35, -0.25],
             'fund_score': [80, 40, 70, 30, 60, 50, 90, 35],
@@ -554,8 +554,8 @@ if stock_name:
         st.markdown("""
         **Final Prediction Explanation:**  
         The model uses three features:
-        - Average News Sentiment (compound score)
-        - Fundamental Score (ROE / P/E Ratio × 100)
+        - Average News Sentiment (Compound Score)
+        - Fundamental Score (ROE / Trailing P/E × 100)
         - Technical Strength (Last Close / 50-Day MA × 100)
         to predict the stock's trend. A prediction of **Bullish** suggests a positive outlook, while **Bearish** indicates potential downside.
         """)
@@ -563,6 +563,7 @@ if stock_name:
         st.error("No full articles found for the given stock. Please try a different symbol.")
 else:
     st.info("Enter a stock symbol above to begin analysis.")
+
 
 
 
