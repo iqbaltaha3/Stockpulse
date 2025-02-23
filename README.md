@@ -1,6 +1,7 @@
 # Stockpulse
+https://stockpulse01.streamlit.app/
 
-StockPulse is an advanced, AI-powered tool designed for retail investors to gain actionable insights on stock performance. Leveraging Python, Streamlit, and cutting-edge libraries such as NLTK (with VADER sentiment analysis) and Plotly, StockPulse scrapes full-text news articles from top financial websites to assess market sentiment—classifying news as bullish, bearish, or neutral.
+StockPulse is an AI-powered tool designed for retail investors to gain actionable insights on stock performance. Leveraging Python, Streamlit, and cutting-edge libraries such as NLTK (with VADER sentiment analysis) and Plotly, StockPulse scrapes full-text news articles from top financial websites to assess market sentiment—classifying news as bullish, bearish, or neutral.
 
 ## Key technical highlights include:
 
